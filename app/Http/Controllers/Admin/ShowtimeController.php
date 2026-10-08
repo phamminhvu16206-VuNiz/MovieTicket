@@ -1,0 +1,14 @@
+<?php
+namespace App\Http\Controllers\Admin;
+use App\Http\Controllers\Controller;
+use App\Models\Movie; use App\Models\Room; use App\Models\Showtime;
+use Illuminate\Http\Request; use Carbon\Carbon;
+class ShowtimeController extends Controller
+{
+    public function index(){ $showtimes=Showtime::with(['movie','room.cinema'])->orderBy('start_time','desc')->paginate(12); return view('admin.showtimes.index',compact('showtimes')); }
+    public function create(){ $movies=Movie::orderBy('title')->get(); $rooms=Room::with('cinema')->where('status','active')->get(); return view('admin.showtimes.create',compact('movies','rooms')); }
+    public function store(Request $request){ $data=$request->validate(['movie_id'=>'required|exists:movies,id','room_id'=>'required|exists:rooms,id','start_time'=>'required|date','price'=>'required|numeric|min:0']); $movie=Movie::findOrFail($data['movie_id']); $start=Carbon::parse($data['start_time']); $end=$start->copy()->addMinutes($movie->duration+10); $conflict=Showtime::where('room_id',$data['room_id'])->where('status','active')->where('start_time','<',$end)->where('end_time','>',$start)->exists(); if($conflict)return back()->withInput()->with('error','Phòng đã có suất chiếu trùng thời gian.'); Showtime::create([...$data,'start_time'=>$start,'end_time'=>$end,'status'=>'active']); return redirect()->route('admin.showtimes.index')->with('success','Thêm suất chiếu thành công.'); }
+    public function edit($id){ $showtime=Showtime::findOrFail($id); $movies=Movie::orderBy('title')->get(); $rooms=Room::with('cinema')->where('status','active')->get(); return view('admin.showtimes.edit',compact('showtime','movies','rooms')); }
+    public function update(Request $request,$id){ $showtime=Showtime::findOrFail($id); $data=$request->validate(['movie_id'=>'required|exists:movies,id','room_id'=>'required|exists:rooms,id','start_time'=>'required|date','price'=>'required|numeric|min:0','status'=>'required|in:active,cancelled']); $movie=Movie::findOrFail($data['movie_id']); $start=Carbon::parse($data['start_time']); $end=$start->copy()->addMinutes($movie->duration+10); $conflict=Showtime::where('id','!=',$id)->where('room_id',$data['room_id'])->where('status','active')->where('start_time','<',$end)->where('end_time','>',$start)->exists(); if($conflict)return back()->withInput()->with('error','Phòng đã có suất chiếu trùng thời gian.'); $showtime->update([...$data,'start_time'=>$start,'end_time'=>$end]); return redirect()->route('admin.showtimes.index')->with('success','Cập nhật suất chiếu thành công.'); }
+    public function destroy($id){ $showtime=Showtime::findOrFail($id); if($showtime->bookings()->whereIn('status',['paid','pending','completed'])->exists())return back()->with('error','Không thể xóa suất chiếu đã có vé. Hãy chuyển sang trạng thái hủy.'); $showtime->delete(); return back()->with('success','Đã xóa suất chiếu.'); }
+}

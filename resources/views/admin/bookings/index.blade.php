@@ -1,0 +1,7 @@
+@extends('layouts.admin')
+@section('title','Quản lý đặt vé') @section('page_title','Quản Lý Đặt Vé')
+@section('content')
+<div class="card shadow-sm border-0"><div class="table-responsive"><table class="table table-hover align-middle mb-0"><thead><tr><th>Mã vé</th><th>Khách hàng</th><th>Phim / suất</th><th>Ghế</th><th>Tổng tiền</th><th>Trạng thái</th></tr></thead><tbody>
+@forelse($bookings as $b)<tr><td><strong>{{ $b->booking_code }}</strong><br><small>{{ $b->created_at->format('d/m/Y H:i') }}</small></td><td>{{ $b->user->name }}<br><small>{{ $b->user->email }}</small></td><td>{{ $b->showtime->movie->title }}<br><small>{{ $b->showtime->start_time->format('H:i d/m/Y') }}</small></td><td>{{ $b->bookingSeats->map(fn($x)=>$x->seat->seat_number)->join(', ') }}</td><td>{{ number_format($b->total_amount) }}đ</td><td><form method="POST" action="{{ route('admin.bookings.status',$b) }}">@csrf @method('PATCH')<select name="status" class="form-select form-select-sm" onchange="this.form.submit()"><option value="pending" @selected($b->status==='pending')>Chờ</option><option value="paid" @selected($b->status==='paid')>Đã thanh toán</option><option value="completed" @selected($b->status==='completed')>Hoàn tất</option><option value="cancelled" @selected($b->status==='cancelled')>Đã hủy</option></select></form></td></tr>@empty<tr><td colspan="6" class="text-center py-4">Chưa có đơn đặt vé.</td></tr>@endforelse
+</tbody></table></div></div><div class="mt-3">{{ $bookings->links() }}</div>
+@endsection
