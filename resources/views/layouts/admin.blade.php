@@ -57,8 +57,14 @@
                     <a href="{{ route('admin.showtimes.index') }}" class="nav-link text-white my-1">
                         <i class="bi bi-clock-history me-2"></i>Quản Lý Suất Chiếu
                     </a>
-                    <a href="{{ route('admin.bookings.index') }}" class="nav-link text-white my-1"><i class="bi bi-ticket-detailed me-2"></i>Quản Lý Đặt Vé</a>
-                    <a href="{{ route('admin.users.index') }}" class="nav-link text-white my-1"><i class="bi bi-people me-2"></i>Quản Lý Người Dùng</a>
+                    <a href="{{ route('admin.bookings.index') }}" class="nav-link text-white my-1"><i
+                            class="bi bi-ticket-detailed me-2"></i>Quản Lý Đặt Vé</a>
+                    <a href="{{ route('admin.users.index') }}" class="nav-link text-white my-1"><i
+                            class="bi bi-people me-2"></i>Quản Lý Người Dùng</a>
+                    <a href="{{ route('admin.refunds.index') }}"
+                        class="nav-link text-white {{ request()->routeIs('admin.refunds.*') ? 'active bg-primary' : '' }}">
+                        <i class="bi bi-wallet2 me-2"></i> Quản Lý Hoàn Tiền
+                    </a>
                     <a href="{{ route('home') }}" target="_blank" class="mt-4 text-info">
                         <i class="bi bi-box-arrow-up-right me-2"></i>Xem Trang Chủ
                     </a>
@@ -95,7 +101,9 @@
                     </div>
                 @endif
 
-                @if(session('error'))<div class="alert alert-danger alert-dismissible fade show">{{ session('error') }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>@endif
+                @if(session('error'))
+                    <div class="alert alert-danger alert-dismissible fade show">{{ session('error') }}<button type="button"
+                class="btn-close" data-bs-dismiss="alert"></button></div>@endif
                 @yield('content')
             </div>
         </div>

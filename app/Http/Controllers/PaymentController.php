@@ -12,6 +12,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use App\Mail\TicketEmailed;
+use Illuminate\Support\Facades\Mail;
 
 class PaymentController extends Controller
 {
@@ -206,6 +208,15 @@ class PaymentController extends Controller
 
         session()->forget('payment_voucher_' . $booking->id);
 
+        // GỬI MAIL TRƯỚC KHI REDIRECT (Cho các phương thức thanh toán trực tiếp / mô phỏng)
+        if ($method !== 'sepay_qr' && $booking->user && $booking->user->email) {
+            try {
+                Mail::to($booking->user->email)->send(new TicketEmailed($booking));
+            } catch (\Exception $e) {
+                Log::error("Send Ticket Mail Error: " . $e->getMessage());
+            }
+        }
+
         return redirect()
             ->route('booking.success', $booking->id)
             ->with('success', 'Thanh toán thành công! Vé của bạn đã được giữ chính thức.');
@@ -213,20 +224,22 @@ class PaymentController extends Controller
 
     public function checkStatus($bookingId)
     {
-        // Tự kiểm tra xem quá 3 phút chưa
+        // Kiểm tra và tự hủy nếu quá hạn 3 phút mà chưa thanh toán
         $this->checkAndCancelIfExpired($bookingId);
 
         $booking = Booking::with('payment')
             ->where('user_id', Auth::id())
-            ->findOrFail($bookingId);
+            ->find($bookingId);
+
+        if (!$booking) {
+            return response()->json(['success' => false], 404);
+        }
 
         return response()->json([
             'booking_status'  => $booking->status,
             'payment_status'  => $booking->payment?->status,
-            'payment_method'  => $booking->payment?->method,
-            'transaction_ref' => $booking->payment?->transaction_ref,
             'is_expired'      => $booking->status === 'cancelled',
-            'success'         => $booking->status === 'paid' && $booking->payment?->status === 'success',
+            'success'         => $booking->status === 'paid', // Trả về true để JS kích hoạt window.location.href
         ]);
     }
 

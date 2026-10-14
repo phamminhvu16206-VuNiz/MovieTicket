@@ -13,6 +13,8 @@ use App\Http\Controllers\Admin\ShowtimeController as AdminShowtimeController;
 use App\Http\Controllers\Admin\UserController as AdminUserController;
 use App\Http\Controllers\Admin\BookingController as AdminBookingController;
 use App\Http\Middleware\AdminMiddleware;
+use App\Http\Controllers\BookingActionController;
+use App\Http\Controllers\Admin\RefundController;
 
 Route::get('/', [HomeController::class, 'index'])->name('home');
 Route::get('/movie/{id}', [HomeController::class, 'showMovieDetail'])->name('movie.detail');
@@ -57,6 +59,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::put('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::put('/profile/password', [ProfileController::class, 'password'])->name('profile.password');
+
+    // Route xử lý Hủy & Hoàn vé
+    Route::post('/booking/{id}/cancel-paid', [BookingActionController::class, 'cancelPaidBooking'])->name('booking.cancel_paid');
+    Route::post('/booking/{id}/refund', [BookingActionController::class, 'refundBooking'])->name('booking.refund');
 });
 
 Route::middleware([AdminMiddleware::class])->prefix('admin')->name('admin.')->group(function () {
@@ -67,4 +73,10 @@ Route::middleware([AdminMiddleware::class])->prefix('admin')->name('admin.')->gr
     Route::patch('/users/{user}/toggle-lock', [AdminUserController::class, 'toggleLock'])->name('users.toggle-lock');
     Route::get('/bookings', [AdminBookingController::class, 'index'])->name('bookings.index');
     Route::patch('/bookings/{booking}/status', [AdminBookingController::class, 'updateStatus'])->name('bookings.status');
+});
+
+Route::prefix('admin')->middleware(['auth'])->group(function () {
+    Route::get('/refunds', [RefundController::class, 'index'])->name('admin.refunds.index');
+    Route::post('/refunds/{id}/approve', [RefundController::class, 'approve'])->name('admin.refunds.approve');
+    Route::post('/bookings/{id}/update-status', [BookingController::class, 'updateStatus'])->name('admin.bookings.update_status');
 });

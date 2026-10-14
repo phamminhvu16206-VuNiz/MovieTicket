@@ -149,6 +149,47 @@
             background: rgba(16, 185, 129, .08);
             border: 1px solid rgba(16, 185, 129, .18);
         }
+
+        /* CSS LỚP PHỦ OVERLAY LÀM MỜ VÀ POPUP QR CĂN GIỮA */
+        .qr-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(11, 17, 32, 0.75);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            z-index: 1050;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .qr-modal-content {
+            background: #172033;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 24px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+            max-width: 580px;
+            width: 100%;
+            position: relative;
+            animation: modalFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes modalFadeIn {
+            from {
+                opacity: 0;
+                transform: scale(0.92) translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: scale(1) translateY(0);
+            }
+        }
     </style>
 
     <div class="container py-3 py-lg-5 payment-v3">
@@ -167,6 +208,21 @@
                 </div>
             </div>
         </div>
+
+        {{-- Đồng hồ đếm ngược 3 phút giữ chỗ tạm thời --}}
+        @if($booking->status === 'pending' && $booking->expires_at)
+            <div class="alert alert-warning border-0 payment-card mb-4 d-flex align-items-center justify-content-between p-3">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="bi bi-clock-history fs-4 text-warning"></i>
+                    <div>
+                        <strong>Thời gian giữ chỗ còn lại:</strong>
+                        <div class="small text-secondary">Sau 3 phút nếu chưa thanh toán, hệ thống sẽ tự động hủy đơn và giải
+                            phóng ghế.</div>
+                    </div>
+                </div>
+                <div id="countdownTimer" class="fs-3 fw-bold text-warning font-monospace">03:00</div>
+            </div>
+        @endif
 
         @if($booking->status === 'paid')
             <div class="alert alert-success payment-card border-0 mb-4">
@@ -313,54 +369,6 @@
                         từ ngân hàng.
                     </div>
                 </div>
-
-                {{-- CHỈ HIỂN THỊ KHUNG QR KHI NGƯỜI DÙNG BẤM TẠO QR ($sepayQrUrl KHÁC NULL) --}}
-                @if($sepayQrUrl)
-                    <div id="sepayPanel" class="payment-card p-4 text-center mb-4">
-                        <div class="text-warning small fw-bold text-uppercase">MÃ QR THANH TOÁN SEPAY</div>
-                        <h3 class="h4 fw-bold mt-1">Quét mã QR bằng ứng dụng Ngân hàng</h3>
-                        <p class="text-secondary mb-4">Vui lòng giữ nguyên nội dung chuyển khoản: <strong
-                                class="text-white">{{ $booking->booking_code }}</strong></p>
-
-                        <div class="qr-box mb-3">
-                            <img src="{{ $sepayQrUrl }}" width="280" height="280" alt="QR thanh toán SePay">
-                        </div>
-
-                        <div class="row g-2 text-start mx-auto" style="max-width:560px">
-                            <div class="col-6">
-                                <div class="bg-dark rounded-3 p-3"><small class="text-secondary d-block">Ngân
-                                        hàng</small><strong>{{ $bankName ?: 'MBBank' }}</strong></div>
-                            </div>
-                            <div class="col-6">
-                                <div class="bg-dark rounded-3 p-3"><small class="text-secondary d-block">Số tài
-                                        khoản</small><strong>{{ $bankAccount ?: 'N/A' }}</strong></div>
-                            </div>
-                            <div class="col-6">
-                                <div class="bg-dark rounded-3 p-3"><small class="text-secondary d-block">Chủ tài
-                                        khoản</small><strong>{{ $accountName ?: 'MovieTicket' }}</strong></div>
-                            </div>
-                            <div class="col-6">
-                                <div class="bg-dark rounded-3 p-3"><small class="text-secondary d-block">Số tiền</small><strong
-                                        class="text-warning">{{ number_format($total) }} VNĐ</strong></div>
-                            </div>
-                        </div>
-
-                        @if($booking->status === 'pending')
-                            <div class="mt-4 d-flex justify-content-center align-items-center gap-2 text-warning status-pulse">
-                                <span class="spinner-border spinner-border-sm"></span>
-                                <span>Đang lắng nghe kết quả thanh toán từ ngân hàng...</span>
-                            </div>
-
-                            <form method="POST" action="{{ route('payment.cancel', $booking->id) }}" class="mt-3">
-                                @csrf
-                                <button class="btn btn-outline-danger btn-sm"
-                                    onclick="return confirm('Hủy yêu cầu thanh toán này?')">
-                                    Hủy giao dịch
-                                </button>
-                            </form>
-                        @endif
-                    </div>
-                @endif
             </div>
 
             <div class="col-lg-4">
@@ -406,6 +414,55 @@
         </div>
     </div>
 
+    {{-- POPUP OVERLAY MÃ QR NẰM GIỮA MÀN HÌNH VÀ LÀM MỜ NỀN PHÍA SAU --}}
+    @if($sepayQrUrl)
+        <div class="qr-modal-overlay">
+            <div class="qr-modal-content p-4 text-center">
+                <div class="text-warning small fw-bold text-uppercase">MÃ QR THANH TOÁN SEPAY</div>
+                <h3 class="h4 fw-bold mt-1 text-white">Quét mã QR bằng ứng dụng Ngân hàng</h3>
+                <p class="text-secondary mb-3">Vui lòng giữ nguyên nội dung chuyển khoản: <strong
+                        class="text-warning fs-5">{{ $booking->booking_code }}</strong></p>
+
+                <div class="qr-box mb-3">
+                    <img src="{{ $sepayQrUrl }}" width="260" height="260" alt="QR thanh toán SePay">
+                </div>
+
+                <div class="row g-2 text-start mx-auto mb-3" style="max-width:500px">
+                    <div class="col-6">
+                        <div class="bg-dark rounded-3 p-2.5 text-white"><small class="text-secondary d-block">Ngân
+                                hàng</small><strong>{{ $bankName ?: 'MBBank' }}</strong></div>
+                    </div>
+                    <div class="col-6">
+                        <div class="bg-dark rounded-3 p-2.5 text-white"><small class="text-secondary d-block">Số tài
+                                khoản</small><strong>{{ $bankAccount ?: 'N/A' }}</strong></div>
+                    </div>
+                    <div class="col-6">
+                        <div class="bg-dark rounded-3 p-2.5 text-white"><small class="text-secondary d-block">Chủ tài
+                                khoản</small><strong>{{ $accountName ?: 'MovieTicket' }}</strong></div>
+                    </div>
+                    <div class="col-6">
+                        <div class="bg-dark rounded-3 p-2.5 text-white"><small class="text-secondary d-block">Số
+                                tiền</small><strong class="text-warning">{{ number_format($total) }} VNĐ</strong></div>
+                    </div>
+                </div>
+
+                @if($booking->status === 'pending')
+                    <div class="d-flex justify-content-center align-items-center gap-2 text-warning status-pulse mb-3">
+                        <span class="spinner-border spinner-border-sm"></span>
+                        <span>Đang lắng nghe kết quả thanh toán từ ngân hàng...</span>
+                    </div>
+
+                    <form method="POST" action="{{ route('payment.cancel', $booking->id) }}">
+                        @csrf
+                        <button class="btn btn-outline-danger btn-sm px-4" onclick="return confirm('Hủy yêu cầu thanh toán này?')">
+                            Hủy giao dịch
+                        </button>
+                    </form>
+                @endif
+            </div>
+        </div>
+    @endif
+
     <script>
         (() => {
             const baseSeat = {{ (float) $seatTotal }};
@@ -414,6 +471,7 @@
             const successUrl = @json(route('booking.success', $booking->id));
             const isPending = @json($booking->status === 'pending');
             const isQrVisible = @json(!is_null($sepayQrUrl));
+            const expiresAt = @json($booking->expires_at ? \Carbon\Carbon::parse($booking->expires_at)->timestamp * 1000 : null);
 
             const money = value => new Intl.NumberFormat('vi-VN').format(Math.max(0, value)) + ' VNĐ';
 
@@ -447,7 +505,26 @@
                 });
             });
 
-            // Chỉ thực hiện Polling kiểm tra trạng thái tự động KHI khung QR đã được khởi tạo
+            // Đếm ngược 3 phút giữ chỗ
+            if (expiresAt && isPending) {
+                const timerElem = document.getElementById('countdownTimer');
+                const interval = setInterval(() => {
+                    const distance = expiresAt - new Date().getTime();
+                    if (distance <= 0) {
+                        clearInterval(interval);
+                        alert('Đã hết 3 phút giữ chỗ. Ghế của bạn đã bị giải phóng!');
+                        window.location.href = @json(route('home'));
+                        return;
+                    }
+                    const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+                    const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+                    if (timerElem) {
+                        timerElem.textContent = `${minutes < 10 ? '0' : ''}${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+                    }
+                }, 1000);
+            }
+
+            // Polling tự động kiểm tra trạng thái chuyển khoản khi khung QR Modal hiển thị
             if (isPending && isQrVisible) {
                 const timer = setInterval(async () => {
                     try {
