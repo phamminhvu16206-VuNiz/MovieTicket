@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Booking;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class BookingController extends Controller
 {
@@ -23,24 +24,35 @@ class BookingController extends Controller
     public function updateStatus(Request $request, $id)
     {
         $request->validate([
-            'status' => 'required|in:pending,paid,refund_pending,refunded,cancelled'
+            'status' => 'required|in:pending,paid,completed,refund_pending,refunded,cancelled',
         ]);
 
         $booking = Booking::findOrFail($id);
-        $booking->update(['status' => $request->status]);
+        $status = $request->string('status')->toString();
 
-        if ($booking->payment) {
-            $booking->payment->update(['status' => $request->status]);
-        }
+        $paymentStatus = match ($status) {
+            'paid' => 'success',
+            'cancelled' => in_array($booking->payment?->status, ['success', 'refund_pending', 'refunded'], true)
+                ? $booking->payment->status
+                : 'failed',
+            default => $status,
+        };
 
-        // Nếu chuyển sang Đã hủy hoặc Đã hoàn tiền -> giải phóng ghế
-        if (in_array($request->status, ['cancelled', 'refund_pending', 'refunded'])) {
-            \DB::table('booking_seats')->where('booking_id', $booking->id)->delete();
+        DB::transaction(function () use ($booking, $status, $paymentStatus) {
+            $booking->update(['status' => $status]);
+
+            if ($booking->payment) {
+                $booking->payment->update(['status' => $paymentStatus]);
+            }
+        });
+
+        if (! $request->expectsJson()) {
+            return back()->with('success', 'Cập nhật trạng thái vé thành công!');
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Cập nhật trạng thái vé thành công!'
+            'message' => 'Cập nhật trạng thái vé thành công!',
         ]);
     }
 }

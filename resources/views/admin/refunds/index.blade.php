@@ -9,6 +9,7 @@
                 <i class="bi bi-wallet2 text-warning me-2"></i>Quản Lý Yêu Cầu Hoàn Tiền
             </h3>
         </div>
+        <p class="text-muted">Chuyển khoản hoàn tiền thủ công theo thông tin khách cung cấp, sau đó bấm xác nhận để cập nhật trạng thái vé.</p>
 
         @if(session('success'))
             <div class="alert alert-success alert-dismissible fade show" role="alert">
@@ -25,6 +26,7 @@
                             <tr class="text-secondary small text-uppercase">
                                 <th class="ps-3">Mã đơn</th>
                                 <th>Khách hàng</th>
+                                <th>Phim / Suất chiếu</th>
                                 <th>Số tiền</th>
                                 <th>Thông tin ngân hàng nhận</th>
                                 <th>Lý do hoàn</th>
@@ -34,15 +36,15 @@
                         </thead>
                         <tbody>
                             @forelse($refundRequests as $req)
-                                @php
-                                    // Tự động tạo QR chuyển khoản VietQR cho Admin quét bằng App ngân hàng
-                                    $vietQrUrl = "https://img.vietqr.io/image/{$req->bank_name}-{$req->account_number}-compact2.png?amount={$req->amount}&addInfo=HOAN TIEN VE {$req->booking_code}&accountName=" . urlencode($req->account_name);
-                                @endphp
                                 <tr>
                                     <td class="ps-3 fw-bold text-primary">#{{ $req->booking_code }}</td>
                                     <td>
                                         <div class="fw-bold text-dark">{{ $req->user_name }}</div>
                                         <div class="small text-muted">{{ $req->user_email }}</div>
+                                    </td>
+                                    <td>
+                                        <div class="fw-bold text-dark">{{ $req->movie_title }}</div>
+                                        <div class="small text-muted">{{ \Illuminate\Support\Carbon::parse($req->start_time)->format('H:i d/m/Y') }}</div>
                                     </td>
                                     <td class="fw-bold text-danger fs-6">{{ number_format($req->amount) }} VNĐ</td>
                                     <td>
@@ -57,60 +59,31 @@
                                     </td>
                                     <td>
                                         @if($req->status === 'pending')
-                                            <span class="badge bg-warning text-dark px-2 py-1"><i class="bi bi-clock me-1"></i>Chờ
-                                                hoàn tiền</span>
+                                            <span class="badge bg-warning text-dark px-2 py-1"><i class="bi bi-clock me-1"></i>Chờ Admin xác nhận</span>
                                         @else
-                                            <span class="badge bg-success px-2 py-1"><i class="bi bi-check-circle me-1"></i>Đã hoàn
-                                                tiền</span>
+                                            <span class="badge bg-success px-2 py-1"><i class="bi bi-check-circle me-1"></i>Đã chuyển khoản</span>
                                         @endif
                                     </td>
                                     <td class="text-center pe-3">
                                         @if($req->status === 'pending')
                                             <div class="d-flex gap-2 justify-content-center">
-                                                <!-- Nút Quét mã VietQR -->
-                                                <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal"
-                                                    data-bs-target="#qrModal{{ $req->id }}">
-                                                    <i class="bi bi-qr-code-scan me-1"></i>Mã VietQR
-                                                </button>
-
-                                                <!-- Form xác nhận hoàn tất chuyển khoản -->
                                                 <form action="{{ route('admin.refunds.approve', $req->id) }}" method="POST"
                                                     onsubmit="return confirm('Xác nhận ĐÃ CHUYỂN TIỀN hoàn cho khách hàng?');">
                                                     @csrf
                                                     <button type="submit" class="btn btn-sm btn-success">
-                                                        <i class="bi bi-check-lg me-1"></i>Xác nhận đã chuyển
+                                                        <i class="bi bi-check-lg me-1"></i>Xác nhận đã chuyển khoản
                                                     </button>
                                                 </form>
                                             </div>
-
-                                            <!-- Modal hiển thị mã VietQR -->
-                                            <div class="modal fade" id="qrModal{{ $req->id }}" tabindex="-1" aria-hidden="true">
-                                                <div class="modal-dialog modal-dialog-centered modal-sm">
-                                                    <div class="modal-content border-0 shadow">
-                                                        <div class="modal-header bg-dark text-white">
-                                                            <h6 class="modal-title text-warning fw-bold"><i
-                                                                    class="bi bi-qr-code me-1"></i>VietQR Hoàn Tiền</h6>
-                                                            <button type="button" class="btn-close btn-close-white"
-                                                                data-bs-dismiss="modal" aria-label="Close"></button>
-                                                        </div>
-                                                        <div class="modal-body text-center p-3">
-                                                            <img src="{{ $vietQrUrl }}" alt="VietQR"
-                                                                class="img-fluid rounded border mb-2">
-                                                            <div class="small text-muted">Dùng App Ngân hàng quét mã để chuyển khoản
-                                                                hoàn tiền cho khách</div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
                                         @else
                                             <span class="text-success small fw-bold"><i class="bi bi-check2-all me-1"></i>Đã hoàn
-                                                tất</span>
+                                                tiền</span>
                                         @endif
                                     </td>
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="7" class="text-center text-muted py-5">
+                                    <td colspan="8" class="text-center text-muted py-5">
                                         <i class="bi bi-inbox fs-2 d-block mb-2 text-secondary"></i>
                                         Hiện chưa có yêu cầu hoàn tiền nào.
                                     </td>

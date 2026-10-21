@@ -3,9 +3,8 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use App\Models\Booking;
+use Illuminate\Support\Facades\DB;
 
 class RefundController extends Controller
 {
@@ -14,9 +13,13 @@ class RefundController extends Controller
         $refundRequests = DB::table('refund_requests')
             ->join('bookings', 'refund_requests.booking_id', '=', 'bookings.id')
             ->join('users', 'refund_requests.user_id', '=', 'users.id')
+            ->join('showtimes', 'bookings.showtime_id', '=', 'showtimes.id')
+            ->join('movies', 'showtimes.movie_id', '=', 'movies.id')
             ->select(
                 'refund_requests.*',
                 'bookings.booking_code',
+                'showtimes.start_time',
+                'movies.title as movie_title',
                 'users.name as user_name',
                 'users.email as user_email'
             )
@@ -31,31 +34,48 @@ class RefundController extends Controller
      */
     public function approve($id)
     {
-        $refundReq = DB::table('refund_requests')->where('id', $id)->first();
+        $approved = DB::transaction(function () use ($id) {
+            $refundRequest = DB::table('refund_requests')
+                ->where('id', $id)
+                ->where('status', 'pending')
+                ->lockForUpdate()
+                ->first();
 
-        if (!$refundReq) {
-            return back()->with('error', 'Yêu cầu hoàn tiền không tồn tại.');
-        }
+            if (! $refundRequest) {
+                return false;
+            }
 
-        DB::transaction(function () use ($refundReq) {
-            // 1. Cập nhật trạng thái yêu cầu hoàn tiền trong admin
+            $booking = Booking::whereKey($refundRequest->booking_id)
+                ->where('status', 'refund_pending')
+                ->lockForUpdate()
+                ->first();
+
+            if (! $booking) {
+                return false;
+            }
+
+            $paymentUpdated = DB::table('payments')
+                ->where('booking_id', $booking->id)
+                ->where('status', 'refund_pending')
+                ->update(['status' => 'refunded', 'updated_at' => now()]);
+
+            if ($paymentUpdated !== 1) {
+                return false;
+            }
+
             DB::table('refund_requests')
-                ->where('id', $refundReq->id)
-                ->update([
-                    'status'     => 'completed',
-                    'updated_at' => now(),
-                ]);
+                ->where('id', $refundRequest->id)
+                ->update(['status' => 'completed', 'updated_at' => now()]);
 
-            // 2. Cập nhật trạng thái vé của khách hàng thành 'refunded'
-            Booking::where('id', $refundReq->booking_id)->update([
-                'status' => 'refunded'
-            ]);
+            $booking->update(['status' => 'refunded']);
 
-            DB::table('payments')->where('booking_id', $refundReq->booking_id)->update([
-                'status' => 'refunded'
-            ]);
+            return true;
         });
 
-        return back()->with('success', 'Đã xác nhận hoàn tiền! Trạng thái vé của khách hàng đã chuyển sang ĐÃ HOÀN TIỀN.');
+        if (! $approved) {
+            return back()->with('error', 'Yêu cầu hoàn tiền không tồn tại hoặc đã được xử lý.');
+        }
+
+        return back()->with('success', 'Đã xác nhận chuyển khoản hoàn tiền. Vé được cập nhật thành đã hủy, hoàn tiền.');
     }
 }

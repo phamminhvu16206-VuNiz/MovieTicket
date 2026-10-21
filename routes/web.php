@@ -1,22 +1,25 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\AuthController;
-use App\Http\Controllers\HomeController;
-use App\Http\Controllers\BookingController;
-use App\Http\Controllers\PaymentController;
-use App\Http\Controllers\ReviewController;
-use App\Http\Controllers\ProfileController;
-use App\Http\Controllers\SePayWebhookController;
+use App\Http\Controllers\Admin\BookingController as AdminBookingController;
 use App\Http\Controllers\Admin\MovieController as AdminMovieController;
+use App\Http\Controllers\Admin\RefundController;
 use App\Http\Controllers\Admin\ShowtimeController as AdminShowtimeController;
 use App\Http\Controllers\Admin\UserController as AdminUserController;
-use App\Http\Controllers\Admin\BookingController as AdminBookingController;
-use App\Http\Middleware\AdminMiddleware;
+use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BookingActionController;
-use App\Http\Controllers\Admin\RefundController;
+use App\Http\Controllers\BookingController;
+use App\Http\Controllers\HomeController;
+use App\Http\Controllers\MovieRecommendationController;
+use App\Http\Controllers\MovieWatchlistController;
+use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\ReviewController;
+use App\Http\Controllers\SePayWebhookController;
+use App\Http\Middleware\AdminMiddleware;
+use Illuminate\Support\Facades\Route;
 
 Route::get('/', [HomeController::class, 'index'])->name('home');
+Route::get('/movie-night', [MovieRecommendationController::class, 'index'])->name('movie.recommendations');
 Route::get('/movie/{id}', [HomeController::class, 'showMovieDetail'])->name('movie.detail');
 
 Route::get('/login', [AuthController::class, 'showFormLogin'])->name('login');
@@ -39,6 +42,12 @@ Route::post('/sepay/webhook', [SePayWebhookController::class, 'handleWebhook'])
     ->name('sepay.webhook');
 
 Route::middleware('auth')->group(function () {
+    Route::get('/profile/watchlist', [MovieWatchlistController::class, 'index'])->name('watchlist.index');
+    Route::post('/watchlist/{movie}', [MovieWatchlistController::class, 'store'])->name('watchlist.store');
+    Route::delete('/watchlist/{movie}', [MovieWatchlistController::class, 'destroy'])->name('watchlist.destroy');
+    Route::patch('/profile/watchlist/reminders/{notificationId}', [MovieWatchlistController::class, 'markReminderAsRead'])
+        ->name('watchlist.reminders.read');
+
     Route::get('/showtime/{showtimeId}/select-seat', [BookingController::class, 'selectSeat'])->name('booking.selectSeat');
     Route::post('/showtime/{showtimeId}/process-booking', [BookingController::class, 'processBooking'])->name('booking.process');
 
@@ -56,13 +65,11 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/profile/bookings', [BookingController::class, 'history'])->name('profile.bookings');
     Route::post('/profile/bookings/{bookingId}/cancel', [BookingController::class, 'cancel'])->name('booking.cancel');
+    Route::post('/booking/{id}/cancel-paid', [BookingActionController::class, 'cancelPaidBooking'])->name('booking.cancel_paid');
+    Route::post('/booking/{id}/refund', [BookingActionController::class, 'refundBooking'])->name('booking.refund');
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::put('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::put('/profile/password', [ProfileController::class, 'password'])->name('profile.password');
-
-    // Route xử lý Hủy & Hoàn vé
-    Route::post('/booking/{id}/cancel-paid', [BookingActionController::class, 'cancelPaidBooking'])->name('booking.cancel_paid');
-    Route::post('/booking/{id}/refund', [BookingActionController::class, 'refundBooking'])->name('booking.refund');
 });
 
 Route::middleware([AdminMiddleware::class])->prefix('admin')->name('admin.')->group(function () {
@@ -73,10 +80,7 @@ Route::middleware([AdminMiddleware::class])->prefix('admin')->name('admin.')->gr
     Route::patch('/users/{user}/toggle-lock', [AdminUserController::class, 'toggleLock'])->name('users.toggle-lock');
     Route::get('/bookings', [AdminBookingController::class, 'index'])->name('bookings.index');
     Route::patch('/bookings/{booking}/status', [AdminBookingController::class, 'updateStatus'])->name('bookings.status');
-});
-
-Route::prefix('admin')->middleware(['auth'])->group(function () {
-    Route::get('/refunds', [RefundController::class, 'index'])->name('admin.refunds.index');
-    Route::post('/refunds/{id}/approve', [RefundController::class, 'approve'])->name('admin.refunds.approve');
-    Route::post('/bookings/{id}/update-status', [BookingController::class, 'updateStatus'])->name('admin.bookings.update_status');
+    Route::post('/bookings/{id}/update-status', [AdminBookingController::class, 'updateStatus'])->name('bookings.update_status');
+    Route::get('/refunds', [RefundController::class, 'index'])->name('refunds.index');
+    Route::post('/refunds/{id}/approve', [RefundController::class, 'approve'])->name('refunds.approve');
 });

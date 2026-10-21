@@ -19,16 +19,30 @@ class HomeController extends Controller
                 ->orWhere('director', 'like', "%{$q}%");
         }))->when($genre, fn ($query) => $query->where('genre', 'like', "%{$genre}%"));
 
-        $showingMovies = (clone $base)->where('status', 'showing')->orderBy('release_date', 'desc')->get();
-        $upcomingMovies = (clone $base)->where('status', 'upcoming')->orderBy('release_date', 'asc')->get();
+        $paginationFilters = $request->only(['q', 'genre']);
+        $showingMovies = (clone $base)
+            ->where('status', 'showing')
+            ->orderBy('release_date', 'desc')
+            ->paginate(4, ['*'], 'showing_page')
+            ->appends($paginationFilters)
+            ->fragment('now-showing');
+        $upcomingMovies = (clone $base)
+            ->where('status', 'upcoming')
+            ->orderBy('release_date', 'asc')
+            ->paginate(4, ['*'], 'upcoming_page')
+            ->appends($paginationFilters)
+            ->fragment('upcoming');
         $genres = Movie::query()->pluck('genre')->flatMap(fn ($value) => collect(explode(',', $value)))->map(fn ($g) => trim($g))->filter()->unique()->sort()->values();
+        $watchlistMovieIds = $request->user()?->watchlistMovies()->pluck('movies.id')->all() ?? [];
 
-        return view('home', compact('showingMovies', 'upcomingMovies', 'genres', 'q', 'genre'));
+        return view('home', compact('showingMovies', 'upcomingMovies', 'genres', 'q', 'genre', 'watchlistMovieIds'));
     }
 
     public function showMovieDetail($id)
     {
-        $movie = Movie::with(['reviews.user','showtimes' => fn ($q) => $q->where('status', 'active')->where('start_time', '>=', now())->orderBy('start_time'), 'showtimes.room.cinema'])->findOrFail($id);
-        return view('movies.detail', compact('movie'));
+        $movie = Movie::with(['reviews.user', 'showtimes' => fn ($q) => $q->where('status', 'active')->where('start_time', '>=', now())->orderBy('start_time'), 'showtimes.room.cinema'])->findOrFail($id);
+        $isWatchlisted = auth()->user()?->watchlistMovies()->where('movies.id', $movie->id)->exists() ?? false;
+
+        return view('movies.detail', compact('movie', 'isWatchlisted'));
     }
 }

@@ -2,88 +2,158 @@
 
 namespace App\Http\Controllers;
 
+use App\Mail\BookingInvoiceMail;
 use App\Models\Booking;
 use App\Models\Payment;
+use App\Models\Voucher;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
-use App\Mail\TicketEmailed;
 use Illuminate\Support\Facades\Mail;
 
-class SepayWebhookController extends Controller
+class SePayWebhookController extends Controller
 {
     public function handleWebhook(Request $request)
     {
-        // 1. Phản hồi nhanh nếu không có dữ liệu
-        $content = strtoupper(trim((string) $request->input('content', '')));
-        $transferAmount = (float) $request->input('transferAmount', 0);
-        $referenceCode = $request->input('referenceCode');
-
-        if (empty($content)) {
-            return response()->json(['success' => false, 'message' => 'Empty content'], 200);
+        if (! config('services.sepay.enabled', false)) {
+            return response()->json(['status' => 'disabled'], 503);
         }
 
-        Log::info('SePay Webhook Received:', $request->all());
+        $expectedKey = (string) config('services.sepay.api_key');
+        $authorization = (string) $request->header('Authorization');
 
-        // 2. Tìm nhanh các đơn đang pending
-        $pendingBookings = Booking::where('status', 'pending')->get();
-        $matchedBooking = null;
+        if ($expectedKey === '' || ! hash_equals('Apikey '.$expectedKey, $authorization)) {
+            return response()->json(['status' => 'error', 'message' => 'Unauthorized'], 401);
+        }
 
-        foreach ($pendingBookings as $booking) {
-            $code = strtoupper($booking->booking_code);
-            $shortCode = substr($code, 0, 8); // Bóc tách chuỗi để tránh bị cắt bớt từ ngân hàng
+        $content = (string) ($request->input('content') ?? $request->input('description') ?? '');
+        $transferAmount = (float) (
+            $request->input('transferAmount')
+            ?? $request->input('amount')
+            ?? $request->input('transfer_amount')
+            ?? 0
+        );
+        $reference = (string) (
+            $request->input('referenceCode')
+            ?? $request->input('reference')
+            ?? $request->input('id')
+            ?? ''
+        );
 
-            if (str_contains($content, $code) || str_contains($content, $shortCode)) {
-                $matchedBooking = $booking;
-                break;
+        Log::info('SePay webhook received', [
+            'content' => $content,
+            'amount' => $transferAmount,
+            'reference' => $reference,
+        ]);
+
+        if (! preg_match('/\b(MVT[A-Z0-9]{8})\b/i', $content, $matches)) {
+            return response()->json([
+                'status' => 'ignored',
+                'message' => 'Không tìm thấy mã booking trong nội dung chuyển khoản.',
+            ]);
+        }
+
+        $bookingCode = strtoupper($matches[1]);
+
+        $booking = Booking::with(['payment', 'bookingVouchers'])
+            ->where('booking_code', $bookingCode)
+            ->where('status', 'pending')
+            ->whereHas('payment', fn ($query) => $query
+                ->where('method', 'sepay_qr')
+                ->where('status', 'pending'))
+            ->first();
+
+        if (! $booking) {
+            return response()->json([
+                'status' => 'ignored',
+                'message' => 'Booking không tồn tại hoặc đã được xử lý.',
+            ]);
+        }
+
+        $expectedAmount = (float) $booking->total_amount;
+
+        if (round($transferAmount, 2) !== round($expectedAmount, 2)) {
+            Log::warning('SePay transfer amount does not match booking', [
+                'booking' => $bookingCode,
+                'expected' => $expectedAmount,
+                'received' => $transferAmount,
+            ]);
+
+            return response()->json([
+                'status' => 'ignored',
+                'message' => 'Số tiền chuyển khoản không khớp.',
+            ], 422);
+        }
+
+        $processed = DB::transaction(function () use ($booking, $transferAmount, $reference) {
+            $booking = Booking::whereKey($booking->id)->lockForUpdate()->firstOrFail();
+            if ($booking->status !== 'pending') {
+                return false;
             }
-        }
 
-        if (!$matchedBooking) {
-            Log::warning("SePay Webhook: Không khớp đơn nào cho nội dung: {$content}");
-            return response()->json(['success' => false, 'message' => 'Booking not found'], 200);
-        }
+            $expired = $booking->expires_at
+                ? now()->greaterThanOrEqualTo($booking->expires_at)
+                : $booking->created_at->lte(now()->subMinutes(3));
 
-        // 3. Cập nhật DB & Gửi Email vé điện tử
-        try {
-            DB::transaction(function () use ($matchedBooking, $transferAmount, $referenceCode) {
-                // Đổi trạng thái -> paid & xóa hạn 3 phút (GIỮ CHỖ VĨNH VIỄN)
-                $matchedBooking->update([
-                    'status'     => 'paid',
-                    'expires_at' => null,
+            if ($expired) {
+                Log::warning('SePay transfer received for expired booking', [
+                    'booking' => $booking->booking_code,
+                    'reference' => $reference,
                 ]);
 
-                Payment::updateOrCreate(
-                    ['booking_id' => $matchedBooking->id],
-                    [
-                        'payment_code'    => 'PAY' . strtoupper(Str::random(10)),
-                        'method'          => 'sepay_qr',
-                        'amount'          => $transferAmount ?: $matchedBooking->total_amount,
-                        'status'          => 'success',
-                        'paid_at'          => now(),
-                        'transaction_ref' => $referenceCode ?? 'SEPAY-' . now()->timestamp,
-                    ]
-                );
+                $booking->delete();
 
-                // Gửi email vé điện tử đến email của người đặt vé
-                if ($matchedBooking->user && $matchedBooking->user->email) {
-                    try {
-                        Mail::to($matchedBooking->user->email)->send(new TicketEmailed($matchedBooking));
-                    } catch (\Exception $e) {
-                        Log::error("Send Ticket Mail Error: " . $e->getMessage());
-                    }
+                return false;
+            }
+
+            if (round($transferAmount, 2) !== round((float) $booking->total_amount, 2)) {
+                return false;
+            }
+
+            $payment = $booking->payment ?: new Payment(['booking_id' => $booking->id]);
+
+            $payment->fill([
+                'payment_code' => $payment->payment_code ?: 'PAY'.strtoupper(str()->random(10)),
+                'method' => 'sepay_qr',
+                'amount' => $transferAmount,
+                'status' => 'success',
+                'paid_at' => now(),
+                'transaction_ref' => $reference ?: 'SEPAY-'.now()->format('YmdHis'),
+            ]);
+            $payment->save();
+
+            $booking->update(['status' => 'paid', 'expires_at' => null]);
+
+            foreach ($booking->bookingVouchers as $bookingVoucher) {
+                if ($bookingVoucher->voucher_id) {
+                    Voucher::whereKey($bookingVoucher->voucher_id)->increment('used_count');
                 }
-            });
-        } catch (\Exception $e) {
-            Log::error("SePay Webhook DB Error: " . $e->getMessage());
-            return response()->json(['success' => false, 'message' => 'Database update error'], 500);
+            }
+
+            return true;
+        });
+
+        if (! $processed) {
+            return response()->json([
+                'status' => 'ignored',
+                'message' => 'Booking đã hết hạn hoặc đã được xử lý.',
+            ], 409);
         }
 
-        // 4. Trả về JSON 200 cho SePay sau khi đã hoàn tất xử lý
+        $paidBooking = Booking::with([
+            'showtime.movie',
+            'showtime.room.cinema',
+            'bookingSeats.seat',
+            'user',
+            'payment',
+        ])->findOrFail($booking->id);
+        Mail::to($paidBooking->user->email)->queue(new BookingInvoiceMail($paidBooking));
+
         return response()->json([
+            'status' => 'success',
+            'message' => 'Đã xác nhận thanh toán.',
+            'booking_code' => $bookingCode,
             'success' => true,
-            'message' => 'Webhook processed successfully'
-        ], 200);
+        ]);
     }
 }

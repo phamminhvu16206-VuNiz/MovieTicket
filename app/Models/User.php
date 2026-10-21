@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
@@ -28,5 +29,10 @@ class User extends Authenticatable
     public function bookings()
     {
         return $this->hasMany(Booking::class);
+    }
+
+    public function watchlistMovies(): BelongsToMany
+    {
+        return $this->belongsToMany(Movie::class, 'movie_watchlists')->withTimestamps();
     }
 }

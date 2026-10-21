@@ -71,7 +71,13 @@
 
         <div class="qr-section">
             <p style="font-weight: bold; margin-bottom: 10px; color: #1e293b;">MÃ VÉ ĐIỆN TỬ (E-TICKET)</p>
-            <img src="{{ $qrCodeBase64 }}" alt="QR Code Vé Xem Phim" />
+            <img
+                src="{{ $message->embedData($qrCodeSvg, 'movie-ticket-qr.svg', 'image/svg+xml') }}"
+                width="240"
+                height="240"
+                alt="QR Code Vé Xem Phim {{ $booking->booking_code }}"
+                style="display:block;width:240px;height:240px;max-width:100%;margin:0 auto;"
+            />
             <p style="margin-top: 10px; font-weight: bold; color: #d97706; font-size: 18px;">
                 {{ $booking->booking_code }}
             </p>

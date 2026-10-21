@@ -18,6 +18,22 @@
                     <p class="mb-2"><strong class="text-light">Đạo diễn:</strong> {{ $movie->director ?? 'Đang cập nhật' }}</p>
                     <p class="mb-2"><strong class="text-light">Diễn viên:</strong> {{ $movie->actors ?? 'Đang cập nhật' }}</p>
                     <p class="mb-3"><strong class="text-light">Khởi chiếu:</strong> {{ date('d/m/Y', strtotime($movie->release_date)) }}</p>
+                    @auth
+                        @if($isWatchlisted)
+                            <form method="POST" action="{{ route('watchlist.destroy', $movie) }}" class="mb-3">
+                                @csrf
+                                @method('DELETE')
+                                <button type="submit" class="btn btn-outline-warning"><i class="bi bi-bookmark-check me-1"></i>Đã lưu · Bỏ khỏi danh sách</button>
+                            </form>
+                        @else
+                            <form method="POST" action="{{ route('watchlist.store', $movie) }}" class="mb-3">
+                                @csrf
+                                <button type="submit" class="btn btn-outline-warning"><i class="bi bi-bookmark-heart me-1"></i>Thêm vào danh sách muốn xem</button>
+                            </form>
+                        @endif
+                    @else
+                        <a href="{{ route('login') }}" class="btn btn-outline-warning mb-3"><i class="bi bi-bookmark-heart me-1"></i>Đăng nhập để lưu phim</a>
+                    @endauth
 
                     <h5 class="text-warning mt-4 fw-bold">Nội Dung Phim:</h5>
                     <p class="text-light leading-relaxed">{{ $movie->description }}</p>
